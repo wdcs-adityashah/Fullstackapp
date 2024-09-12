@@ -33,8 +33,21 @@ router.post('/login', async (req, res) => {
 
     try {
         const user = await EmployeeModel.findOne({ email });
+        if (user) {
+            // Return session data or token
+            res.json({
+              message: "Success",
+              session: {
+                user: {
+                  password: user.password,
+                  name: user.name,
+                  email: user.email
+                }
+              }
+            });
+          } 
         if (!user) return res.status(404).json({ message: "No record exists" });
-
+         
         // Compare hashed passwords
         const isMatch = await user.comparePassword(password);
         if (!isMatch) return res.status(400).json({ message: "Password is incorrect" });
