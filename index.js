@@ -5,10 +5,10 @@ const authRoutes = require('./routes/authRoutes');
 const { logRequests, errorHandler } = require('./middleware'); 
 const app = express();
 const PORT = process.env.PORT || 4010;
-
 app.use(express.json());
 app.use(cors());
 app.use(logRequests);
+
 
 mongoose.connect("mongodb://localhost:27017/mernauthnode")
   .then(() => console.log('MongoDB connected'))

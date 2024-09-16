@@ -6,7 +6,7 @@ const SECRET_KEY = 'your_secret_key';
 
 // Registration route
 router.post('/register', async (req, res) => {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     if (!name || !email || !password) {
         return res.status(400).json({ message: "All fields are required" });
@@ -18,7 +18,7 @@ router.post('/register', async (req, res) => {
             return res.status(400).json({ message: "Email already registered" });
         }
 
-        const newUser = new EmployeeModel({ name, email, password });
+        const newUser = new EmployeeModel({ name, email, password, role });
         const savedUser = await newUser.save();
         res.status(201).json(savedUser);
     } catch (err) {
@@ -28,37 +28,45 @@ router.post('/register', async (req, res) => {
 });
 
 // Login route
+// Login route
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     try {
         const user = await EmployeeModel.findOne({ email });
-        if (user) {
-            // Return session data or token
-            res.json({
-              message: "Success",
-              session: {
-                user: {
-                  password: user.password,
-                  name: user.name,
-                  email: user.email
-                }
-              }
-            });
-          } 
-        if (!user) return res.status(404).json({ message: "No record exists" });
-         
-        // Compare hashed passwords
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) return res.status(400).json({ message: "Password is incorrect" });
+        
+        // If user is not found, return an error
+        if (!user) {
+            return res.status(404).json({ message: "No record exists" });
+        }
 
-        // Generate token
-        const token = jwt.sign({ name: user.name, email: user.email }, SECRET_KEY, { expiresIn: '1h' });
-        res.json({ message: "Success", token });
+        // Compare passwords
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Password is incorrect" });
+        }
+
+        // Generate a token after successful login
+        const token = jwt.sign({ name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '1h' });
+
+        // Return session data along with the token in a single response
+        res.json({
+            message: "Success",
+            session: {
+                user: {
+                    name: user.name,
+                    email: user.email,
+                    role: user.role
+                }
+            },
+            token
+        });
     } catch (err) {
         res.status(500).json({ message: "Server error", error: err.message });
     }
 });
+
+
 
 const verifyToken = (req, res, next) => {
     const token = req.headers['authorization'];
@@ -72,9 +80,42 @@ const verifyToken = (req, res, next) => {
         res.status(400).json({ message: 'Invalid token' });
     }
 };
-
+const verifyRole = (roles) => {
+    return (req, res, next) => {
+      const token = req.headers['authorization'];
+      if (!token) return res.status(401).json({ message: 'Access denied' });
+  
+      try {
+        const verified = jwt.verify(token.split(" ")[1], SECRET_KEY);
+        req.user = verified;
+  
+        if (!roles.includes(req.user.role)) {
+          return res.status(403).json({ message: 'Forbidden: Insufficient permissions' });
+        }
+  
+        next();
+      } catch (err) {
+        res.status(400).json({ message: 'Invalid token' });
+      }
+    };
+  };
+  router.get('/users', verifyRole(['admin']), async (req, res) => {
+    try {
+      const users = await EmployeeModel.find({}, 'name email role'); // Exclude password field
+      res.json(users);
+    } catch (err) {
+      res.status(500).json({ message: 'Server error', error: err.message });
+    }
+  });
 router.get('/dashboard', verifyToken, (req, res) => {
     res.json({ message: `Welcome ${req.user.name}`, user: req.user });
 });
-
+// Protect an admin-only route
+router.get('/admin', verifyRole(['admin']), (req, res) => {
+    res.json({ message: `Welcome Admin ${req.user.name}`, user: req.user });
+});
+router.post('/logout', (req, res) => {
+    // Invalidate token on the client-side by clearing cookies or localStorage
+    res.status(200).json({ message: "Logged out successfully" });
+});
 module.exports = router;
