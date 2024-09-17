@@ -34,21 +34,17 @@ router.post('/login', async (req, res) => {
   try {
     const user = await EmployeeModel.findOne({ email });
     
-    // If user is not found, return an error
     if (!user) {
       return res.status(404).json({ message: "No record exists" });
     }
 
-    // Compare passwords
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(400).json({ message: "Password is incorrect" });
     }
 
-    // Generate a token after successful login
     const token = jwt.sign({ name: user.name, email: user.email, role: user.role }, SECRET_KEY, { expiresIn: '1h' });
 
-    // Return session data along with the token in a single response
     res.json({
       message: "Success",
       session: {
@@ -65,7 +61,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Verify token middleware
 const verifyToken = (req, res, next) => {
   const token = req.headers['authorization'];
   if (!token) return res.status(401).json({ message: 'Access denied' });
@@ -85,7 +80,6 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-// Verify role middleware
 const verifyRole = (roles) => {
   return (req, res, next) => {
     const token = req.headers['authorization'];
@@ -107,27 +101,42 @@ const verifyRole = (roles) => {
 };
 
 // Protected routes
-router.get('/users', verifyRole(['admin']), async (req, res) => {
+router.get('/admin', verifyRole(['admin']), async (req, res) => {
+  const searchQuery = req.query.search || ''; 
   try {
-    const users = await EmployeeModel.find({}, 'name email role'); // Exclude password field
+    const users = await EmployeeModel.find({
+      $or: [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { email: { $regex: searchQuery, $options: 'i' } }
+      ]
+    }, 'name email role')
+    .limit(20); // Limit the result to 20 records
+
     res.json(users);
-    console.log(users);
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
-
+router.get('/manager', verifyRole(['manager','admin']), async (req, res) => {
+    try { 
+      const lastTenUsers = await EmployeeModel.find({}, 'name email role')
+        .sort({ $natural: -1 }) 
+        .limit(10);   
+      res.json(lastTenUsers);
+    } catch (err) {
+      res.status(500).json({ message: 'Server error', error: err.message });
+    }
+  });
+  
 router.get('/dashboard', verifyToken, (req, res) => {
   res.json({ message: `Welcome ${req.user.name}`, user: req.user });
 });
 
-// Protect an admin-only route
-router.get('/admin', verifyRole(['admin']), (req, res) => {
-  res.json({ message: `Welcome Admin ${req.user.name}`, user: req.user });
-});
+// router.get('/admin', verifyRole(['admin']), (req, res) => {
+//   res.json({ message: `Welcome Admin ${req.user.name}`, user: req.user });
+// });
 
 router.post('/logout', (req, res) => {
-  // Invalidate token on the client-side by clearing cookies or localStorage
   res.status(200).json({ message: "Logged out successfully" });
 });
 
